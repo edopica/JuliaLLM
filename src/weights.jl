@@ -32,5 +32,5 @@ end
 Retrieve and materialize a single tensor by name.
 """
 function get_tensor(st, name::AbstractString)
-    return Array(SafeTensors.tensor(st, name))
+    return Array(st[name])
 end

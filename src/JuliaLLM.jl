@@ -19,7 +19,7 @@ include("model.jl")
 include("generate.jl")
 
 export ModelConfig, load_config
-export load_weights, list_tensors
+export load_weights, list_tensors, get_tensor
 export load_tokenizer, encode, decode
 export rms_norm
 export build_rope_cache, apply_rope
