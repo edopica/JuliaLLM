@@ -19,15 +19,15 @@ include("model.jl")
 include("generate.jl")
 
 export ModelConfig, load_config
-export load_weights, list_tensors, get_tensor
+export load_weights, load_checkpoint, CheckpointBundle, list_tensors, get_tensor
 export load_tokenizer, encode, decode
 export rms_norm
 export build_rope_cache, apply_rope
 export attention_forward
 export mlp_forward
 export KVCache, update_cache!
-export TransformerBlock, block_forward
-export QwenModel, forward
+export LayerWeights, block_forward
+export QwenModel, load_model, forward
 export greedy_generate
 
 end # module JuliaLLM

@@ -13,7 +13,8 @@
           "intermediate_size": 3072,
           "rms_norm_eps": 1e-6,
           "rope_theta": 10000.0,
-          "max_position_embeddings": 32768
+          "max_position_embeddings": 32768,
+          "tie_word_embeddings": true
         }
         """)
 
@@ -29,5 +30,6 @@
         @test cfg.rms_norm_eps ≈ 1e-6
         @test cfg.rope_theta ≈ 10000.0
         @test cfg.max_position_embeddings == 32768
+        @test cfg.tie_word_embeddings == true
     end
 end
