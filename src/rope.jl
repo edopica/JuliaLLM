@@ -32,7 +32,20 @@ Apply rotary embeddings to x.
   Returns same shape.
 """
 function apply_rope(x::AbstractArray, cos_cache, sin_cache, position_ids::AbstractVector{Int})
-    # TODO: implement the paired-rotation per head_dim pairs
-    # This is a placeholder; fill in after config loading is validated.
-    return x
+    head_dim, seq_len, n_heads, batch = size(x)
+    
+    # cos_cache/sin_cache: (max_seq_len, head_dim÷2)
+    # Selected: (length(position_ids), head_dim÷2)
+    # Transposed: (head_dim÷2, seq_len) to match first two dimensions of x slices
+    C = cos_cache[position_ids .+ 1, :]'
+    S = sin_cache[position_ids .+ 1, :]'
+    
+    x_1 = x[1:2:end, :, :, :]
+    x_2 = x[2:2:end, :, :, :]
+    
+    out = similar(x)
+    out[1:2:end, :, :, :] = x_1 .* C .- x_2 .* S
+    out[2:2:end, :, :, :] = x_1 .* S .+ x_2 .* C
+    
+    return out
 end

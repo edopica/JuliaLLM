@@ -18,10 +18,31 @@
     @test all(isapprox.(sin_cache[1, :], 0.0f0; atol=1e-5))
 end
 
-@testset "apply_rope placeholder" begin
-    # apply_rope currently returns input unchanged (stub)
-    x = randn(Float32, 64, 4, 8, 1)
-    cos_c, sin_c = build_rope_cache(4, 64, 10000.0)
-    out = apply_rope(x, cos_c, sin_c, collect(0:3))
-    @test size(out) == size(x)
+@testset "apply_rope correctness" begin
+    head_dim = 2
+    seq_len  = 1
+    theta    = 10000.0
+    cos_c, sin_c = build_rope_cache(2, head_dim, theta)
+    
+    # Position 1 (0-indexed)
+    # Input x: (head_dim, seq_len, n_heads, batch)
+    x = reshape(Float32[1.0, 2.0], head_dim, seq_len, 1, 1)
+    
+    # For head_dim=2, theta=10000:
+    # freqs = [1.0 / 10000^(0/2)] = [1.0]
+    # pos = 1 => angle = 1.0 * 1.0 = 1.0
+    c = cos(1.0f0)
+    s = sin(1.0f0)
+    
+    # expected: [x1*c - x2*s, x1*s + x2*c]
+    expected = [1.0f0*c - 2.0f0*s, 1.0f0*s + 2.0f0*c]
+    
+    out = apply_rope(x, cos_c, sin_c, [1])
+    @test out ≈ reshape(expected, head_dim, seq_len, 1, 1)
+    
+    # Position 0 (0-indexed)
+    # angle = 0 => cos=1, sin=0
+    # expected: [1.0, 2.0]
+    out0 = apply_rope(x, cos_c, sin_c, [0])
+    @test out0 ≈ x
 end
