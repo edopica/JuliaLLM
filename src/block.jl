@@ -11,24 +11,33 @@ attention projection matrices.
 Placeholder until attention_forward is implemented.
 """
 
-struct LayerWeights
+struct LayerWeights{M<:AbstractMatrix, V<:AbstractVector}
     # Attention projections
-    w_q::Matrix{Float32}
-    w_k::Matrix{Float32}
-    w_v::Matrix{Float32}
-    w_o::Matrix{Float32}
+    w_q::M
+    w_k::M
+    w_v::M
+    w_o::M
     # Pre-attention RMSNorm (applied to the residual stream)
-    norm_attn::Vector{Float32}
+    norm_attn::V
     # Qwen3 QK-Norm: RMSNorm applied per-head to Q and K before RoPE
-    q_norm::Vector{Float32}      # (head_dim,)
-    k_norm::Vector{Float32}      # (head_dim,)
+    q_norm::V      # (head_dim,)
+    k_norm::V      # (head_dim,)
     # MLP
-    w_gate::Matrix{Float32}
-    w_up::Matrix{Float32}
-    w_down::Matrix{Float32}
+    w_gate::M
+    w_up::M
+    w_down::M
     # Pre-MLP RMSNorm
-    norm_mlp::Vector{Float32}
+    norm_mlp::V
 end
+
+# Adapt walks each field with `to`, so `adapt(CuArray, layer)` moves all weights to the GPU.
+Adapt.adapt_structure(to, w::LayerWeights) = LayerWeights(
+    adapt(to, w.w_q),    adapt(to, w.w_k),    adapt(to, w.w_v),  adapt(to, w.w_o),
+    adapt(to, w.norm_attn),
+    adapt(to, w.q_norm), adapt(to, w.k_norm),
+    adapt(to, w.w_gate), adapt(to, w.w_up),   adapt(to, w.w_down),
+    adapt(to, w.norm_mlp),
+)
 
 """
     block_forward(x, weights::LayerWeights, cfg::ModelConfig, ...) -> Array

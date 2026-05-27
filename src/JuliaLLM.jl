@@ -5,6 +5,7 @@ using SafeTensors
 using LinearAlgebra
 using Statistics
 using NNlib
+using Adapt
 
 include("config.jl")
 include("weights.jl")

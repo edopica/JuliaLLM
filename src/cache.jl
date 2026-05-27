@@ -3,26 +3,33 @@ KV cache for incremental decoding.
 Stores previously computed keys and values per layer.
 """
 
-mutable struct KVCache
+mutable struct KVCache{A<:AbstractArray{<:AbstractFloat,3}}
     # keys[layer]:   (head_dim, num_kv_heads, max_seq_len)
     # values[layer]: (head_dim, num_kv_heads, max_seq_len)
-    keys::Vector{Array{Float32,3}}
-    values::Vector{Array{Float32,3}}
+    keys::Vector{A}
+    values::Vector{A}
     seq_len::Int   # how many positions are currently filled
 end
 
 """
-    KVCache(cfg::ModelConfig, max_seq_len::Int) -> KVCache
+    KVCache(cfg::ModelConfig, max_seq_len::Int; like=Float32[]) -> KVCache
 
-Allocate an empty KV cache for all layers.
+Allocate an empty KV cache for all layers. Pass `like=model.embed` (or any
+weight from the model) to make the cache live on the same device as the model.
 """
-function KVCache(cfg::ModelConfig, max_seq_len::Int)
-    keys   = [zeros(Float32, cfg.head_dim, cfg.num_key_value_heads, max_seq_len)
+function KVCache(cfg::ModelConfig, max_seq_len::Int; like::AbstractArray=Float32[])
+    keys   = [fill!(similar(like, cfg.head_dim, cfg.num_key_value_heads, max_seq_len), 0)
               for _ in 1:cfg.num_hidden_layers]
-    values = [zeros(Float32, cfg.head_dim, cfg.num_key_value_heads, max_seq_len)
+    values = [fill!(similar(like, cfg.head_dim, cfg.num_key_value_heads, max_seq_len), 0)
               for _ in 1:cfg.num_hidden_layers]
     return KVCache(keys, values, 0)
 end
+
+Adapt.adapt_structure(to, c::KVCache) = KVCache(
+    map(k -> adapt(to, k), c.keys),
+    map(v -> adapt(to, v), c.values),
+    c.seq_len,
+)
 
 """
     update_cache!(cache::KVCache, layer::Int, new_k, new_v)

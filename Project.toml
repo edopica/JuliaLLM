@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["edoardopicazio02@gmail.com"]
 
 [deps]
+Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
@@ -20,6 +21,7 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 test = ["Test"]
 
 [compat]
+Adapt = "4"
 Aqua = "0.8.14"
 BenchmarkTools = "1.8.0"
 Documenter = "1.17.0"

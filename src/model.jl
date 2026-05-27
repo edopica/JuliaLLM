@@ -7,13 +7,23 @@ tie_word_embeddings, sharded vs single-file checkpoint) are absorbed by
 ModelConfig and the weight-loading helpers.
 """
 
-struct QwenModel
+struct QwenModel{M<:AbstractMatrix, V<:AbstractVector}
     cfg::ModelConfig
-    embed::Matrix{Float32}            # (hidden_size, vocab_size) — columns are token embeddings
-    layers::Vector{LayerWeights}
-    final_norm::Vector{Float32}       # (hidden_size,)
-    lm_head::Matrix{Float32}          # (vocab_size, hidden_size); aliases `embed` when cfg.tie_word_embeddings
+    embed::M                                # (hidden_size, vocab_size) — columns are token embeddings
+    layers::Vector{LayerWeights{M,V}}
+    final_norm::V                           # (hidden_size,)
+    lm_head::M                              # (vocab_size, hidden_size); aliases `embed` when cfg.tie_word_embeddings
 end
+
+# `adapt(CuArray, model)` (or `cu(model)` from CUDA.jl) returns a GPU-resident copy.
+# `cfg` is plain ints and is left untouched.
+Adapt.adapt_structure(to, m::QwenModel) = QwenModel(
+    m.cfg,
+    adapt(to, m.embed),
+    map(layer -> adapt(to, layer), m.layers),
+    adapt(to, m.final_norm),
+    adapt(to, m.lm_head),
+)
 
 """
     load_model(model_dir::AbstractString) -> QwenModel
