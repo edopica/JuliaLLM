@@ -4,6 +4,7 @@ using JuliaLLM
 @testset "JuliaLLM" begin
     include("test_config.jl")
     include("test_weights.jl")
+    include("test_checkpoint_bundle.jl")
     include("test_norm.jl")
     include("test_rope.jl")
     include("test_attention.jl")

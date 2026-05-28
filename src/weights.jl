@@ -51,10 +51,58 @@ Behavior:
   2. Otherwise, look for exactly one `*.safetensors` file in `model_dir`,
      open it, and build an index from its tensor names.
 
-TODO: implement. Stub raises so the model loader fails loudly until done.
 """
 function load_checkpoint(model_dir::AbstractString)::CheckpointBundle
-    error("load_checkpoint: not yet implemented")
+    index_name = "model.safetensors.index.json"
+    index_path = joinpath(model_dir, index_name)
+
+    if isfile(index_path)
+        # Sharded case
+        index_data = JSON3.read(read(index_path, String))
+        weight_map = index_data.weight_map
+        
+        # Load unique shards
+        shard_files = unique(values(weight_map))
+        shards = Any[]
+        shard_to_idx = Dict{String, Int}()
+        for (i, f) in enumerate(shard_files)
+            fname = String(f)
+            push!(shards, load_weights(joinpath(model_dir, fname)))
+            shard_to_idx[fname] = i
+        end
+        
+        # Map tensor names to shard indices
+        tensor_index = Dict{String, Int}()
+        for (tensor_name, shard_file) in weight_map
+            tensor_index[String(tensor_name)] = shard_to_idx[String(shard_file)]
+        end
+        
+        return CheckpointBundle(shards, tensor_index)
+    else
+        # Single-file case
+        st_files = filter(f -> endswith(f, ".safetensors"), readdir(model_dir))
+        
+        if isempty(st_files) error("No .safetensors files found in $model_dir") end
+        
+        target_file = ""
+        if length(st_files) == 1
+            target_file = st_files[1]
+        elseif "model.safetensors" in st_files
+            target_file = "model.safetensors"
+        else
+            error("Multiple .safetensors files found in $model_dir, but no index file. Ambiguous checkpoint.")
+        end
+        
+        st = load_weights(joinpath(model_dir, target_file))
+        
+        # Build index: all tensors in this file map to shard 1
+        tensor_index = Dict{String, Int}()
+        for (name, _) in st
+            tensor_index[String(name)] = 1
+        end
+        
+        return CheckpointBundle([st], tensor_index)
+    end
 end
 
 """
@@ -72,10 +120,15 @@ end
     list_tensors(b::CheckpointBundle) -> Vector{Pair{String, Tuple}}
 
 Same as the single-handle version but aggregated across every shard.
-TODO: implement when `load_checkpoint` lands.
 """
 function list_tensors(b::CheckpointBundle)::Vector{Pair{String,Any}}
-    error("list_tensors(::CheckpointBundle): not yet implemented")
+    tensors = Pair{String, Any}[]
+    for (name, shard_idx) in b.index
+        st = b.shards[shard_idx]
+        push!(tensors, name => size(st[name]))
+    end
+    sort!(tensors, by=first)
+    return tensors
 end
 
 """
@@ -92,8 +145,12 @@ end
     get_tensor(b::CheckpointBundle, name::AbstractString) -> Array
 
 Resolve `name` to its shard via `b.index` and materialize the tensor.
-TODO: implement when `load_checkpoint` lands.
 """
 function get_tensor(b::CheckpointBundle, name::AbstractString)
-    error("get_tensor(::CheckpointBundle, ...): not yet implemented")
+    if !haskey(b.index, name)
+        error("Tensor '$name' not found in checkpoint.")
+    end
+    shard_idx = b.index[name]
+    st = b.shards[shard_idx]
+    return get_tensor(st, name)
 end
