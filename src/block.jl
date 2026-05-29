@@ -53,5 +53,20 @@ TODO: implement once attention_forward is ready. Order:
 function block_forward(x, weights::LayerWeights, cfg::ModelConfig,
                        cos_cache, sin_cache;
                        kv_cache=nothing, layer::Int=1, position_ids=nothing)
-    error("block_forward: not yet implemented")
+    # 1. Attention branch
+    y = rms_norm(x, weights.norm_attn, cfg.rms_norm_eps)
+    y = attention_forward(
+        y, weights.w_q, weights.w_k, weights.w_v, weights.w_o,
+        weights.q_norm, weights.k_norm,
+        cos_cache, sin_cache, cfg;
+        kv_cache=kv_cache, layer=layer, position_ids=position_ids
+    )
+    x = x + y
+
+    # 2. MLP branch
+    y = rms_norm(x, weights.norm_mlp, cfg.rms_norm_eps)
+    y = mlp_forward(y, weights.w_gate, weights.w_up, weights.w_down)
+    x = x + y
+
+    return x
 end

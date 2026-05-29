@@ -46,5 +46,93 @@ function attention_forward(
     layer::Int=1,
     position_ids=nothing,
 )
-    error("attention_forward: not yet implemented")
+    hidden_size, seq_len = size(x)
+
+    # 1. Project Q, K, V from x
+    q_raw = w_q * x  # (num_heads * head_dim, seq_len)
+    k_raw = w_k * x  # (num_kv_heads * head_dim, seq_len)
+    v_raw = w_v * x  # (num_kv_heads * head_dim, seq_len)
+
+    # 2. Reshape to (head_dim, n_heads, seq_len)
+    q = reshape(q_raw, cfg.head_dim, cfg.num_attention_heads, seq_len)
+    k = reshape(k_raw, cfg.head_dim, cfg.num_key_value_heads, seq_len)
+    v = reshape(v_raw, cfg.head_dim, cfg.num_key_value_heads, seq_len)
+
+    # 3. RMSNorm Q with q_norm and K with k_norm (QK-Norm)
+    # RMS along the head_dim (first dimension)
+    function qk_norm(y, weight)
+        ms = mean(y .^ 2, dims=1)
+        return (y ./ sqrt.(ms .+ cfg.rms_norm_eps)) .* weight
+    end
+    q = qk_norm(q, q_norm)
+    k = qk_norm(k, k_norm)
+
+    # 4. Apply RoPE to Q and K
+    # apply_rope expects (head_dim, seq_len, n_heads, batch)
+    q = permutedims(q, (1, 3, 2)) # (head_dim, seq_len, num_heads)
+    k = permutedims(k, (1, 3, 2)) # (head_dim, seq_len, num_kv_heads)
+    v = permutedims(v, (1, 3, 2)) # (head_dim, seq_len, num_kv_heads)
+
+    if position_ids === nothing
+        offset = (kv_cache === nothing) ? 0 : kv_cache.seq_len
+        position_ids = collect(offset:(offset + seq_len - 1))
+    end
+
+    # Add batch dimension for apply_rope
+    q_rope = reshape(q, cfg.head_dim, seq_len, cfg.num_attention_heads, 1)
+    k_rope = reshape(k, cfg.head_dim, seq_len, cfg.num_key_value_heads, 1)
+
+    q = dropdims(apply_rope(q_rope, cos_cache, sin_cache, position_ids), dims=4)
+    k = dropdims(apply_rope(k_rope, cos_cache, sin_cache, position_ids), dims=4)
+
+    # 5. KV Cache: append K, V and read back full K, V
+    if kv_cache !== nothing
+        # total_len is the length after adding current tokens
+        # update_cache! only increments kv_cache.seq_len after the last layer,
+        # so we calculate it here based on current seq_len.
+        total_len = kv_cache.seq_len + seq_len
+        
+        # update_cache! expects (head_dim, num_kv_heads, seq_len)
+        update_cache!(kv_cache, layer, permutedims(k, (1, 3, 2)), permutedims(v, (1, 3, 2)))
+        
+        k = kv_cache.keys[layer][:, :, 1:total_len]
+        v = kv_cache.values[layer][:, :, 1:total_len]
+        
+        # Reshape back to (head_dim, total_len, num_kv_heads)
+        k = permutedims(k, (1, 3, 2))
+        v = permutedims(v, (1, 3, 2))
+    else
+        total_len = seq_len
+    end
+
+    # 6. Expand K, V from num_kv_heads -> num_heads (GQA)
+    if cfg.num_key_value_heads < cfg.num_attention_heads
+        n_rep = cfg.num_attention_heads ÷ cfg.num_key_value_heads
+        k = repeat(k, inner=(1, 1, n_rep))
+        v = repeat(v, inner=(1, 1, n_rep))
+    end
+
+    # 7. Scaled dot-product attention with causal mask
+    # Q: (head_dim, seq_len, num_heads) -> (seq_len, head_dim, num_heads)
+    # K: (head_dim, total_len, num_heads)
+    q_attn = permutedims(q, (2, 1, 3))
+    scores = batched_mul(q_attn, k) ./ Float32(sqrt(cfg.head_dim))
+
+    if seq_len > 1
+        # Causal mask: mask[i, j] = true if j > i + (total_len - seq_len)
+        mask = (1:seq_len) .+ (total_len - seq_len) .< (1:total_len)'
+        scores = scores .- Float32.(mask .* 1e9)
+    end
+
+    attn_weights = softmax(scores, dims=2)
+
+    # V: (head_dim, total_len, num_heads) -> (total_len, head_dim, num_heads)
+    v_attn = permutedims(v, (2, 1, 3))
+    attn_out = batched_mul(attn_weights, v_attn) # (seq_len, head_dim, num_heads)
+
+    # 8. Reshape back and project with w_o
+    attn_out = permutedims(attn_out, (2, 3, 1)) # (head_dim, num_heads, seq_len)
+    attn_out = reshape(attn_out, cfg.num_attention_heads * cfg.head_dim, seq_len)
+    
+    return w_o * attn_out
 end
