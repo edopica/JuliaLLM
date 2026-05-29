@@ -16,6 +16,6 @@ Apply RMSNorm along the first dimension of x.
 function rms_norm(x::AbstractArray, weight::AbstractVector, eps::Float64=1e-5)
     # RMS over the first dimension (hidden_size)
     ms = mean(x .^ 2, dims=1)                 # (1, ...)
-    x_norm = x ./ sqrt.(ms .+ eps)            # (hidden_size, ...)
+    x_norm = x ./ sqrt.(ms .+ Float32(eps))   # (hidden_size, ...)
     return x_norm .* weight                   # broadcast scale
 end

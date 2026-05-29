@@ -9,5 +9,6 @@ using JuliaLLM
     include("test_rope.jl")
     include("test_attention.jl")
     include("test_block.jl")
+    include("test_tokenizer.jl")
     include("test_generation.jl")
 end

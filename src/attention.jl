@@ -62,7 +62,7 @@ function attention_forward(
     # RMS along the head_dim (first dimension)
     function qk_norm(y, weight)
         ms = mean(y .^ 2, dims=1)
-        return (y ./ sqrt.(ms .+ cfg.rms_norm_eps)) .* weight
+        return (y ./ sqrt.(ms .+ Float32(cfg.rms_norm_eps))) .* weight
     end
     q = qk_norm(q, q_norm)
     k = qk_norm(k, k_norm)
@@ -75,7 +75,8 @@ function attention_forward(
 
     if position_ids === nothing
         offset = (kv_cache === nothing) ? 0 : kv_cache.seq_len
-        position_ids = collect(offset:(offset + seq_len - 1))
+        # Use similar(x, Int, 0) to get the correct array type (device) with Int eltype
+        position_ids = adapt(similar(x, Int, 0), collect(offset:(offset + seq_len - 1)))
     end
 
     # Add batch dimension for apply_rope
@@ -120,8 +121,11 @@ function attention_forward(
 
     if seq_len > 1
         # Causal mask: mask[i, j] = true if j > i + (total_len - seq_len)
-        mask = (1:seq_len) .+ (total_len - seq_len) .< (1:total_len)'
-        scores = scores .- Float32.(mask .* 1e9)
+        # Create indices on the correct device to avoid CPU-GPU sync
+        idx_i = adapt(similar(scores, Int, 0), collect(1:seq_len))
+        idx_j = adapt(similar(scores, Int, 0), collect(1:total_len)')
+        mask = idx_i .+ (total_len - seq_len) .< idx_j
+        scores = scores .- (mask .* Float32(1e9))
     end
 
     attn_weights = softmax(scores, dims=2)
