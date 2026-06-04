@@ -60,9 +60,10 @@ function attention_forward(
 
     # 3. RMSNorm Q with q_norm and K with k_norm (QK-Norm)
     # RMS along the head_dim (first dimension)
+    T = eltype(x)
     function qk_norm(y, weight)
         ms = mean(y .^ 2, dims=1)
-        return (y ./ sqrt.(ms .+ Float32(cfg.rms_norm_eps))) .* weight
+        return (y ./ sqrt.(ms .+ T(cfg.rms_norm_eps))) .* weight
     end
     q = qk_norm(q, q_norm)
     k = qk_norm(k, k_norm)
@@ -117,7 +118,7 @@ function attention_forward(
     # Q: (head_dim, seq_len, num_heads) -> (seq_len, head_dim, num_heads)
     # K: (head_dim, total_len, num_heads)
     q_attn = permutedims(q, (2, 1, 3))
-    scores = batched_mul(q_attn, k) ./ Float32(sqrt(cfg.head_dim))
+    scores = batched_mul(q_attn, k) ./ T(sqrt(cfg.head_dim))
 
     if seq_len > 1
         # Causal mask: mask[i, j] = true if j > i + (total_len - seq_len)
@@ -125,7 +126,7 @@ function attention_forward(
         idx_i = adapt(similar(scores, Int, 0), collect(1:seq_len))
         idx_j = adapt(similar(scores, Int, 0), collect(1:total_len)')
         mask = idx_i .+ (total_len - seq_len) .< idx_j
-        scores = scores .- (mask .* Float32(1e9))
+        scores = scores .- (mask .* T(1e9))
     end
 
     attn_weights = softmax(scores, dims=2)

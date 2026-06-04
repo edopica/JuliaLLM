@@ -6,8 +6,8 @@
     cos_cache, sin_cache = build_rope_cache(seq_len, head_dim, theta)
 
     # Shape checks
-    @test size(cos_cache) == (seq_len, head_dim ÷ 2)
-    @test size(sin_cache) == (seq_len, head_dim ÷ 2)
+    @test size(cos_cache) == (seq_len, head_dim)
+    @test size(sin_cache) == (seq_len, head_dim)
 
     # Values are in [-1, 1]
     @test all(-1 .<= cos_cache .<= 1)

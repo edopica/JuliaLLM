@@ -1,17 +1,31 @@
 using JuliaLLM
 using Statistics
+using BFloat16s
 
 function main()
     if length(ARGS) < 2
-        println("Usage: julia --project examples/run_forward.jl <model_dir> <prompt>")
+        println("Usage: julia --project examples/run_forward.jl <model_dir> <prompt> [dtype]")
+        println("  dtype: f32 (default), f16, bf16")
         return
     end
 
     model_dir = ARGS[1]
     prompt = ARGS[2]
+    
+    # Parse dtype
+    dtype_str = length(ARGS) >= 3 ? lowercase(ARGS[3]) : "f32"
+    dtype = if dtype_str == "f32"
+        Float32
+    elseif dtype_str == "f16"
+        Float16
+    elseif dtype_str == "bf16"
+        BFloat16
+    else
+        error("Unsupported dtype: $dtype_str. Use f32, f16, or bf16.")
+    end
 
-    println("Loading model from $model_dir...")
-    model = load_model(model_dir)
+    println("Loading model from $model_dir (dtype=$dtype)...")
+    model = load_model(model_dir; dtype=dtype)
     
     tk = load_tokenizer(joinpath(model_dir, "tokenizer.json"))
     

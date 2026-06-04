@@ -43,7 +43,14 @@ function update_cache!(cache::KVCache, layer::Int, new_k, new_v)
     stop  = cache.seq_len + n
     cache.keys[layer][:, :, start:stop]   .= new_k
     cache.values[layer][:, :, start:stop] .= new_v
-    if layer == length(cache.keys)
-        cache.seq_len += n   # advance position only after last layer
-    end
+end
+
+"""
+    advance_cache!(cache::KVCache, n::Int)
+
+Advance the internal sequence length by `n` positions. Call this once per
+decoding step (after all layers have updated the cache).
+"""
+function advance_cache!(cache::KVCache, n::Int)
+    cache.seq_len += n
 end

@@ -51,5 +51,7 @@ using LinearAlgebra
     cache = KVCache(cfg, 10)
     out_cached = block_forward(x, weights, cfg, cos_cache, sin_cache; kv_cache=cache, layer=1)
     @test size(out_cached) == (cfg.hidden_size, seq_len)
+    
+    advance_cache!(cache, seq_len)
     @test cache.seq_len == seq_len
 end

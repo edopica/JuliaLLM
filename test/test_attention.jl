@@ -73,6 +73,8 @@ using Statistics
         )
         @test size(out1_l2) == (cfg.hidden_size, seq_len1)
         @test !all(out1_l2 .== 0)
+        
+        advance_cache!(cache, seq_len1)
         @test cache.seq_len == seq_len1
         
         # 2. Generation phase (seq_len = 1)
@@ -98,6 +100,8 @@ using Statistics
         )
         @test size(out2_l2) == (cfg.hidden_size, 1)
         @test !all(out2_l2 .== 0)
+        
+        advance_cache!(cache, 1)
         @test cache.seq_len == seq_len1 + 1
     end
 

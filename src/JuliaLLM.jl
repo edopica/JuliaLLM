@@ -26,7 +26,7 @@ export rms_norm
 export build_rope_cache, apply_rope
 export attention_forward
 export mlp_forward
-export KVCache, update_cache!
+export KVCache, update_cache!, advance_cache!
 export LayerWeights, block_forward
 export QwenModel, load_model, forward
 export greedy_generate

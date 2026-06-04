@@ -13,9 +13,9 @@ Apply RMSNorm along the first dimension of x.
   weight: (hidden_size,)  — learnable scale (gamma)
   output: same shape as x
 """
-function rms_norm(x::AbstractArray, weight::AbstractVector, eps::Float64=1e-5)
+function rms_norm(x::AbstractArray{T}, weight::AbstractVector{T}, eps::Real=1e-5) where T
     # RMS over the first dimension (hidden_size)
-    ms = mean(x .^ 2, dims=1)                 # (1, ...)
-    x_norm = x ./ sqrt.(ms .+ Float32(eps))   # (hidden_size, ...)
-    return x_norm .* weight                   # broadcast scale
+    ms = mean(x .^ 2, dims=1)              # (1, ...)
+    x_norm = x ./ sqrt.(ms .+ T(eps))      # (hidden_size, ...)
+    return x_norm .* weight                # broadcast scale
 end
