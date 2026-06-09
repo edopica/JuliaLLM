@@ -12,4 +12,5 @@ using JuliaLLM
     include("test_tokenizer.jl")
     include("test_generation.jl")
     include("test_precision.jl")
+    include("test_cuda.jl")
 end

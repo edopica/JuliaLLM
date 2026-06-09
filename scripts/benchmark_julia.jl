@@ -2,19 +2,60 @@ using JuliaLLM
 using JSON3
 using Printf
 using Dates
+using BFloat16s
+using CUDA
+using Adapt
 
 function main()
     if length(ARGS) < 1
-        println("Usage: julia --project scripts/benchmark_julia.jl <model_dir> [output_path]")
+        println("Usage: julia --project scripts/benchmark_julia.jl <model_dir> [dtype] [output_path]")
+        println("  dtype: f32 (default), f16, bf16")
         exit(1)
     end
 
     model_dir = ARGS[1]
-    output_path = length(ARGS) >= 2 ? ARGS[2] : nothing
     
-    println("Loading model from: ", model_dir)
+    # Parse dtype (optional second argument)
+    dtype_str = "f32"
+    output_path = nothing
 
-    model = load_model(model_dir)
+    if length(ARGS) >= 2
+        arg2 = ARGS[2]
+        if arg2 in ["f32", "f16", "bf16"]
+            dtype_str = arg2
+            if length(ARGS) >= 3
+                output_path = ARGS[3]
+            end
+        else
+            output_path = arg2
+        end
+    end
+
+    dtype = if dtype_str == "f32"
+        Float32
+    elseif dtype_str == "f16"
+        Float16
+    elseif dtype_str == "bf16"
+        BFloat16
+    else
+        error("Unsupported dtype: $dtype_str. Use f32, f16, or bf16.")
+    end
+    
+    println("Loading model from: ", model_dir, " (dtype=$dtype)")
+
+    model = load_model(model_dir; dtype=dtype)
+    
+    # GPU logic
+    device_name = "CPU"
+    if CUDA.functional()
+        println("CUDA functional! Moving model to GPU...")
+        model = cu(model)
+        device_name = CUDA.name(CUDA.device())
+        println("Model moved to: ", device_name)
+    else
+        println("CUDA not functional. Running on CPU.")
+    end
+
     config = model.cfg
     tokenizer = load_tokenizer(joinpath(model_dir, "tokenizer.json"))
 
@@ -32,7 +73,10 @@ function main()
     println("Running warm-up...")
     cache_warmup = KVCache(config, N_PROMPT + N_GEN; like=model.embed)
     logits_warmup = forward(model, prompt_ids; kv_cache=cache_warmup)
-    next_id = Int(argmax(view(logits_warmup, :, size(logits_warmup, 2)))) - 1
+    
+    # Handle both CPU and GPU logits for argmax
+    next_id_logits = view(logits_warmup, :, size(logits_warmup, 2))
+    next_id = Int(argmax(Array(next_id_logits))) - 1
     forward(model, [next_id]; kv_cache=cache_warmup)
 
     # -----------------
@@ -44,6 +88,8 @@ function main()
         cache = KVCache(config, N_PROMPT + N_GEN; like=model.embed)
         t0 = time_ns()
         logits = forward(model, prompt_ids; kv_cache=cache)
+        # Force sync for GPU
+        CUDA.functional() && CUDA.synchronize()
         t1 = time_ns()
         prefill_time += (t1 - t0) / 1e9
     end
@@ -58,15 +104,20 @@ function main()
     for i in 1:n_runs
         cache = KVCache(config, N_PROMPT + N_GEN; like=model.embed)
         logits = forward(model, prompt_ids; kv_cache=cache)
-        next_id = Int(argmax(view(logits, :, size(logits, 2)))) - 1
+        
+        next_id_logits = view(logits, :, size(logits, 2))
+        next_id = Int(argmax(Array(next_id_logits))) - 1
         
         t0 = time_ns()
         n_gen_actual = 0
         for _ in 1:N_GEN
             logits = forward(model, [next_id]; kv_cache=cache)
-            next_id = Int(argmax(view(logits, :, 1))) - 1
+            # Force sync and get next_id
+            l_view = view(logits, :, 1)
+            next_id = Int(argmax(Array(l_view))) - 1
             n_gen_actual += 1
         end
+        CUDA.functional() && CUDA.synchronize()
         t1 = time_ns()
         
         gen_time += (t1 - t0) / 1e9
@@ -86,6 +137,8 @@ function main()
     data = Dict(
         "timestamp" => string(now()),
         "model" => model_dir,
+        "dtype" => dtype_str,
+        "device" => device_name,
         "platform" => Dict(
             "os" => (Sys.islinux() ? "Linux" : Sys.isapple() ? "macOS" : Sys.iswindows() ? "Windows" : "Unknown"),
             "machine" => Sys.MACHINE,
@@ -102,10 +155,11 @@ function main()
         )
     )
 
-    report_json = JSON3.write(data)
-    
     # Print a summary to console
     println("\n=== JuliaLLM Benchmark Summary ===")
+    @printf "Model:      %s\n" model_dir
+    @printf "Precision:  %s\n" dtype_str
+    @printf "Device:     %s\n" device_name
     @printf "Prefill:    %.2f tok/s (N=%d)\n" prefill_tok_sec N_PROMPT
     @printf "Generation: %.2f tok/s (N=%d)\n" gen_tok_sec Int(avg_n_gen)
     println("==================================")

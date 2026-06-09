@@ -1,0 +1,124 @@
+
+A job is a unit of computation that a user submits through a job script. 
+SLURM schedules and allocates resources and reports the job status.
+
+You can submit a job writing a script (script_name.sh) and submitting it with the command:
+
+ 
+
+$ sbatch script_name.sh
+
+ 
+
+A simple example of a job script is:
+
+ 
+
+#!/bin/bash
+#SBATCH --job-name="test_submission"
+#SBATCH --account=<YourStudentIdNumber>
+#SBATCH --partition=stud
+#SBATCH --qos=stud
+#SBATCH --output=out/%x_%j.out # %x gives job name and %j gives job id
+#SBATCH --error=err/%x_%j.err
+ 
+
+echo "Who am I?"
+whoami
+ 
+
+echo "Where ?"
+hostname
+ 
+
+sleep 10
+ 
+
+The first line is always the same, and it is needed to specify the interpreter: the Bash shell environment.
+
+After there are the sbatch directives, starting with #SBATCH followed by the option that you want to set.
+
+Finally there are the commands that you want to execute.
+
+ 
+
+Useful SLURM directives
+Account name
+
+as account name you must use your username (matricola)
+
+ 
+
+#SBATCH --partition=<partition_name>
+
+#SBATCH --partition=stud
+
+ 
+
+ 
+
+SLURM Notification by Email
+
+If you want to be notified by email when a job is completed, you can include the following directives in your bash script (.sh file):
+
+#SBATCH --mail-type=END
+
+#SBATCH --mail-user=<matricola>@studbocconi.it
+
+(Other valid options are: BEGIN, FAIL, ALL)
+
+ 
+
+MEMORY
+
+The default value for memory per CPU is DefMemPerCPU=8000 on the partition stud, as shown by the command below
+
+
+$ scontrol show partition stud  | grep Mem
+  DefMemPerCPU=8000 MaxMemPerNode=UNLIMITED
+
+ 
+
+If you exceed the default, you get an error message by the Slurm scheduler, since the memory required cannot be allocated. 
+
+You can select a higher value in Megabyte (MB) in your Slurm batch script:
+
+ 
+
+#SBATCH --mem-per-cpu=<value>
+
+amount of real memory per allocated CPU required by the job
+
+ 
+
+or
+
+ 
+
+#SBATCH --mem=<value>
+
+maximum amount of real memory per node required by the job
+
+ 
+
+The maximum memory that you can request on a node is given by RealMemory, as shown below for the nodes in the stud partition:
+
+$ scontrol show nodes gnode[01-04] | grep Memory
+  RealMemory=500000 AllocMem=0 FreeMem=837974 Sockets=2 Boards=1
+  RealMemory=500000 AllocMem=0 FreeMem=442091 Sockets=2 Boards=1
+  RealMemory=500000 AllocMem=65536 FreeMem=947189 Sockets=2 Boards=1
+  RealMemory=500000 AllocMem=0 FreeMem=488305 Sockets=2 Boards=1
+
+ 
+
+In this case, you can request a maximum of 500000 MB on the nodes listed above. Please optimize your code for memory usage and always request the memory that you really need, to avoid a waste of resources.
+
+Job submission using GPUs
+In the example below, you see the SLURM directives that you might specify in your script, if you need to choose a node (gnode01) and the number of gpus (1):
+
+   #!/bin/bash
+   #SBATCH --job-name=gputest
+   #SBATCH --partition=stud
+   #SBATCH --qos=stud
+   #SBATCH --nodelist=gnode01
+   #SBATCH --gpus=1
