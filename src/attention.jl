@@ -122,10 +122,10 @@ function attention_forward(
 
     if seq_len > 1
         # Causal mask: mask[i, j] = true if j > i + (total_len - seq_len)
-        # We create the mask and move it to the device of 'scores'
         mask = (1:seq_len) .+ (total_len - seq_len) .< (1:total_len)'
-        mask_device = adapt(scores, collect(mask))
-        scores = scores .- (mask_device .* T(1e9))
+        # Move the mask to the GPU as a CuArray (or whichever device scores is on)
+        mask_device = adapt(typeof(scores).name.wrapper, collect(mask))
+        scores = ifelse.(mask_device, T(-1e9), scores)
     end
 
     attn_weights = softmax(scores, dims=2)

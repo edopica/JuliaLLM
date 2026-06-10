@@ -1,0 +1,20 @@
+{
+    "dtype": "bf16",
+    "device": "NVIDIA A100 80GB PCIe MIG 3g.40gb",
+    "model": "/home/3320522/models/qwen3-0.6B",
+    "platform": {
+        "memory_gb": 1006.72,
+        "julia_version": "1.12.6",
+        "cpu": "Intel(R) Xeon(R) Gold 6326 CPU @ 2.90GHz",
+        "cores_logical": 32,
+        "machine": "x86_64-linux-gnu",
+        "os": "Linux"
+    },
+    "results": {
+        "generation_tok_sec": 17.04,
+        "prefill_n": 5,
+        "prefill_tok_sec": 78.63,
+        "generation_n": 50
+    },
+    "timestamp": "2026-06-10T10:15:49.717"
+}
