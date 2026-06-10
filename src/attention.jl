@@ -122,11 +122,10 @@ function attention_forward(
 
     if seq_len > 1
         # Causal mask: mask[i, j] = true if j > i + (total_len - seq_len)
-        # Create indices on the correct device to avoid CPU-GPU sync
-        idx_i = adapt(similar(scores, Int, 0), collect(1:seq_len))
-        idx_j = adapt(similar(scores, Int, 0), collect(1:total_len)')
-        mask = idx_i .+ (total_len - seq_len) .< idx_j
-        scores = scores .- (mask .* T(1e9))
+        # We create the mask and move it to the device of 'scores'
+        mask = (1:seq_len) .+ (total_len - seq_len) .< (1:total_len)'
+        mask_device = adapt(scores, collect(mask))
+        scores = scores .- (mask_device .* T(1e9))
     end
 
     attn_weights = softmax(scores, dims=2)
