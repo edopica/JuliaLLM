@@ -138,7 +138,7 @@ function forward(model::QwenModel, token_ids::AbstractVector{Int}; kv_cache=noth
 
     # 5. LM Head projection
     # lm_head: (vocab_size, hidden_size), x: (hidden_size, seq_len)
-    logits = model.lm_head * x # (vocab_size, seq_len)
+    logits = matmul(model.lm_head, x) # (vocab_size, seq_len)
     
     return logits
 end

@@ -13,8 +13,8 @@ out = (silu(x @ gate_proj.T) * (x @ up_proj.T)) @ down_proj.T
   output: (hidden_size, seq_len)
 """
 function mlp_forward(x, w_gate, w_up, w_down)
-    g_raw = w_gate * x
+    g_raw = matmul(w_gate, x)
     gate  = NNlib.sigmoid_fast.(g_raw) .* g_raw   # silu = x * sigmoid(x)
-    up    = w_up * x
-    return w_down * (gate .* up)
+    up    = matmul(w_up, x)
+    return matmul(w_down, (gate .* up))
 end

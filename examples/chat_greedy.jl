@@ -36,10 +36,10 @@ function main()
             break
         end
 
-        token_ids = encode(tk, prompt)
+        token_ids = format_chat_prompt(tk, prompt)
         
         println("Generating...")
-        new_ids = greedy_generate(model, token_ids; max_new_tokens=100, eos_ids=tk.eos_token_id)
+        new_ids = greedy_generate(model, token_ids; max_new_tokens=100, eos_ids=Set([tk.eos_token_id, 151643]))
         
         # We can also stream the output if we want, but for now just print all at once
         response = decode(tk, new_ids)

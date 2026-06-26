@@ -46,3 +46,10 @@ end
     out0 = apply_rope(x, cos_c, sin_c, [0])
     @test out0 ≈ x
 end
+
+@testset "RoPE Float16 does not collapse" begin
+    cos_c, sin_c = build_rope_cache(4, 128, 1_000_000.0; T=Float16)
+    # sin must be non-zero for positions > 0 (otherwise RoPE is identity)
+    @test any(sin_c[2, :] .!= 0)   # position 1 should have rotation
+    @test any(sin_c[4, :] .!= 0)   # position 3 should have rotation
+end

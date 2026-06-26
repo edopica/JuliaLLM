@@ -14,8 +14,9 @@ Apply RMSNorm along the first dimension of x.
   output: same shape as x
 """
 function rms_norm(x::AbstractArray{T}, weight::AbstractVector{T}, eps::Real=1e-5) where T
-    # RMS over the first dimension (hidden_size)
-    ms = mean(x .^ 2, dims=1)              # (1, ...)
-    x_norm = x ./ sqrt.(ms .+ T(eps))      # (hidden_size, ...)
-    return x_norm .* weight                # broadcast scale
+    # Compute entirely in Float32 to avoid overflow of mean(x^2)
+    x32 = Float32.(x)
+    ms = mean(x32 .^ 2, dims=1)
+    x_norm = x32 ./ sqrt.(ms .+ Float32(eps))
+    return T.(x_norm) .* weight
 end

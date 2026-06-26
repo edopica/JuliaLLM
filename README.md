@@ -41,7 +41,8 @@ test/        Unit tests for each primitive
 examples/    Runnable scripts (inspect_checkpoint, run_forward, chat_greedy)
 scripts/     Benchmark scripts and Python reference oracle
 docs/        (placeholder)
-reviews/     Progress reports and next-step notes
+reviews/     (moved to reports/)
+reports/     Consolidated project documentation (Architecture, Benchmarks, Guides, Status)
 ```
 
 ---
@@ -59,14 +60,20 @@ huggingface-cli download Qwen/Qwen3-0.6B --local-dir /path/to/qwen3-0.6b
 
 ## Benchmark results
 
-> **Not yet available.** Will be added after Milestone 6 (generation).
+| Model | Precision | Prefill (tok/s) | Generation (tok/s) | Hardware |
+| :--- | :--- | :---: | :---: | :--- |
+| **Qwen3-0.6B** | Float32 | 13.7 | 3.1 | CPU (4-thread) |
+| **Qwen3-0.6B** | Float16 | 19.6 | 9.5 | CPU (4-thread) |
+| **Qwen3-4B** | Float32 | 2.0 | 0.5 | CPU (4-thread) |
+| **Qwen3-4B** | Float16 | 2.4 | 1.6 | CPU (4-thread) |
+
+See [reports/BENCHMARKS.md](reports/BENCHMARKS.md) for full analysis and comparison.
 
 ---
 
 ## Limitations
 
-- CPU only (no GPU support in v1)
-- Float32 full precision (no quantization)
 - Greedy decoding only (no sampling)
 - Single model family (Qwen3)
 - No custom tokenizer — depends on `tokenizer.json` from HuggingFace
+- No native weight quantization (Int8/Int4)

@@ -49,9 +49,9 @@ function attention_forward(
     hidden_size, seq_len = size(x)
 
     # 1. Project Q, K, V from x
-    q_raw = w_q * x  # (num_heads * head_dim, seq_len)
-    k_raw = w_k * x  # (num_kv_heads * head_dim, seq_len)
-    v_raw = w_v * x  # (num_kv_heads * head_dim, seq_len)
+    q_raw = matmul(w_q, x)  # (num_heads * head_dim, seq_len)
+    k_raw = matmul(w_k, x)  # (num_kv_heads * head_dim, seq_len)
+    v_raw = matmul(w_v, x)  # (num_kv_heads * head_dim, seq_len)
 
     # 2. Reshape to (head_dim, n_heads, seq_len)
     q = reshape(q_raw, cfg.head_dim, cfg.num_attention_heads, seq_len)
@@ -62,8 +62,10 @@ function attention_forward(
     # RMS along the head_dim (first dimension)
     T = eltype(x)
     function qk_norm(y, weight)
-        ms = mean(y .^ 2, dims=1)
-        return (y ./ sqrt.(ms .+ T(cfg.rms_norm_eps))) .* weight
+        # Compute entirely in Float32 to avoid overflow of mean(y^2)
+        y32 = Float32.(y)
+        ms = mean(y32 .^ 2, dims=1)
+        return T.(y32 ./ sqrt.(ms .+ Float32(cfg.rms_norm_eps))) .* weight
     end
     q = qk_norm(q, q_norm)
     k = qk_norm(k, k_norm)
@@ -118,7 +120,8 @@ function attention_forward(
     # Q: (head_dim, seq_len, num_heads) -> (seq_len, head_dim, num_heads)
     # K: (head_dim, total_len, num_heads)
     q_attn = permutedims(q, (2, 1, 3))
-    scores = batched_mul(q_attn, k) ./ T(sqrt(cfg.head_dim))
+    # Use safe_batched_mul which internally uses Float32 for Float16 arrays
+    scores = T.(safe_batched_mul(q_attn, k) ./ Float32(sqrt(cfg.head_dim)))
 
     if seq_len > 1
         # Causal mask: mask[i, j] = true if j > i + (total_len - seq_len)
@@ -132,11 +135,11 @@ function attention_forward(
 
     # V: (head_dim, total_len, num_heads) -> (total_len, head_dim, num_heads)
     v_attn = permutedims(v, (2, 1, 3))
-    attn_out = batched_mul(attn_weights, v_attn) # (seq_len, head_dim, num_heads)
+    attn_out = safe_batched_mul(attn_weights, v_attn) # (seq_len, head_dim, num_heads)
 
     # 8. Reshape back and project with w_o
     attn_out = permutedims(attn_out, (2, 3, 1)) # (head_dim, num_heads, seq_len)
     attn_out = reshape(attn_out, cfg.num_attention_heads * cfg.head_dim, seq_len)
     
-    return w_o * attn_out
+    return matmul(w_o, attn_out)
 end

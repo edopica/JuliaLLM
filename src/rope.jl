@@ -12,16 +12,17 @@ Precompute cos/sin rotation tables.
   Returns two matrices of shape (seq_len, head_dim) for the split-half layout.
 """
 function build_rope_cache(seq_len::Int, head_dim::Int, theta::Real; T=Float32)
+    # Compute in Float64 to avoid overflow for Float16 (theta can be 1e6+)
     # Frequencies: shape (head_dim÷2,)
-    freqs = T(1.0) ./ (T(theta) .^ (T.(range(0, head_dim - 2; step=2)) ./ T(head_dim)))
+    freqs = 1.0 ./ (Float64(theta) .^ (range(0, head_dim - 2; step=2) ./ Float64(head_dim)))
     # Positions: shape (seq_len,)
-    t = T.(0:seq_len-1)
+    t = Float64.(0:seq_len-1)
     # Outer product: (seq_len, head_dim÷2)
     angles = t * freqs'
     
-    # Concatenate to match head_dim for split-half layout
-    cos_cache = hcat(cos.(angles), cos.(angles))   # (seq_len, head_dim)
-    sin_cache = hcat(sin.(angles), sin.(angles))   # (seq_len, head_dim)
+    # Concatenate to match head_dim for split-half layout, then cast to T
+    cos_cache = T.(hcat(cos.(angles), cos.(angles)))   # (seq_len, head_dim)
+    sin_cache = T.(hcat(sin.(angles), sin.(angles)))   # (seq_len, head_dim)
     
     return cos_cache, sin_cache
 end

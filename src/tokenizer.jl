@@ -9,6 +9,7 @@ struct Tokenizer
     merges::Dict{Tuple{String,String},Int}
     byte_encoder::Dict{UInt8,Char}
     byte_decoder::Dict{Char,UInt8}
+    added_tokens::Dict{String,Int}   # special tokens like <|im_start|> => 151644
     bos_token_id::Int
     eos_token_id::Int
 end
@@ -65,16 +66,20 @@ function load_tokenizer(path::AbstractString)::Tokenizer
     be = get_byte_encoder()
     bd = Dict{Char,UInt8}(v => k for (k, v) in be)
 
-    # Read special tokens
+    # Read special/added tokens
+    added_tokens = Dict{String,Int}()
     bos_id = 151643 # Default for Qwen2.5/3
     eos_id = 151643
     if haskey(raw, :added_tokens)
         for tok in raw[:added_tokens]
             content = String(tok[:content])
             id = Int(tok[:id])
+            added_tokens[content] = id
             if content == "<|endoftext|>" || content == "</s>"
-                eos_id = id
-                bos_id = id # Qwen often uses same for both
+                bos_id = id  # Qwen uses endoftext as BOS
+            end
+            if content == "<|im_end|>"
+                eos_id = id  # Qwen3 uses im_end as primary EOS
             end
             if content == "<s>"
                 bos_id = id
@@ -82,20 +87,61 @@ function load_tokenizer(path::AbstractString)::Tokenizer
         end
     end
 
-    return Tokenizer(vocab, token_to_id, merges, be, bd, bos_id, eos_id)
+    return Tokenizer(vocab, token_to_id, merges, be, bd, added_tokens, bos_id, eos_id)
 end
 
 """
-    encode(tk::Tokenizer, text::String) -> Vector{Int}
+    _split_on_added_tokens(text, added_tokens) -> Vector{Tuple{String, Bool}}
 
-Tokenize a string into token IDs.
+Split text into segments, identifying added/special tokens.
+Returns pairs of (segment, is_special_token).
 """
-function encode(tk::Tokenizer, text::String)::Vector{Int}
+function _split_on_added_tokens(text::String, added_tokens::Dict{String,Int})
+    if isempty(added_tokens) || isempty(text)
+        return [(text, false)]
+    end
+
+    # Sort tokens by length (longest first) for greedy matching
+    sorted_tokens = sort(collect(keys(added_tokens)), by=length, rev=true)
+
+    # Build regex pattern that matches any added token
+    escaped = [replace(t, r"([\\\^\$\.\|\?\*\+\(\)\[\]\{\}])" => s"\\\1") for t in sorted_tokens]
+    pattern = Regex("(" * join(escaped, "|") * ")")
+
+    segments = Tuple{String, Bool}[]
+    last_end = 1
+    for m in eachmatch(pattern, text)
+        # Add text before the match
+        if m.offset > last_end
+            push!(segments, (text[last_end:m.offset-1], false))
+        end
+        # Add the matched special token
+        push!(segments, (m.match, true))
+        last_end = m.offset + length(m.match)
+    end
+    # Add remaining text
+    if last_end <= length(text)
+        push!(segments, (text[last_end:end], false))
+    end
+
+    return segments
+end
+
+"""
+    _bpe_encode(tk::Tokenizer, text::String) -> Vector{Int}
+
+Apply byte-level BPE encoding to a plain text segment (no special tokens).
+"""
+function _bpe_encode(tk::Tokenizer, text::String)::Vector{Int}
+    if isempty(text)
+        return Int[]
+    end
+
     # 1. Byte-level pre-encoding
     # Convert each byte of UTF-8 to its Unicode character counterpart
     bytes = collect(Vector{UInt8}(text))
     words = [string(tk.byte_encoder[b]) for b in bytes]
-    
+
     # 2. Iterative BPE merging
     # In a real implementation, we'd use a regex split first, but here we
     # do a simple greedy merge on the whole sequence.
@@ -105,13 +151,13 @@ function encode(tk::Tokenizer, text::String)::Vector{Int}
         for i in 1:length(words)-1
             push!(pairs, (words[i], words[i+1]))
         end
-        
+
         if isempty(pairs) break end
-        
+
         # Find the pair with the highest priority (lowest index in merges)
         best_pair = nothing
         min_rank = typemax(Int)
-        
+
         for p in pairs
             rank = get(tk.merges, p, typemax(Int))
             if rank < min_rank
@@ -119,9 +165,9 @@ function encode(tk::Tokenizer, text::String)::Vector{Int}
                 best_pair = p
             end
         end
-        
+
         if best_pair === nothing break end
-        
+
         # Merge the best pair
         new_words = String[]
         i = 1
@@ -136,9 +182,29 @@ function encode(tk::Tokenizer, text::String)::Vector{Int}
         end
         words = new_words
     end
-    
+
     # 3. Map to IDs
     return [get(tk.token_to_id, w, 0) for w in words]
+end
+
+"""
+    encode(tk::Tokenizer, text::String) -> Vector{Int}
+
+Tokenize a string into token IDs.
+"""
+function encode(tk::Tokenizer, text::String)::Vector{Int}
+    # Split text on special/added tokens
+    segments = _split_on_added_tokens(text, tk.added_tokens)
+
+    ids = Int[]
+    for (segment, is_special) in segments
+        if is_special
+            push!(ids, tk.added_tokens[segment])
+        else
+            append!(ids, _bpe_encode(tk, segment))
+        end
+    end
+    return ids
 end
 
 """
@@ -149,15 +215,47 @@ Convert token IDs back to a string.
 function decode(tk::Tokenizer, ids::AbstractVector{Int})::String
     # 1. Map IDs to BPE-encoded strings
     bpe_strings = [get(tk.vocab, id, "") for id in ids]
-    
+
     # 2. Join and map back to bytes
     full_bpe_str = join(bpe_strings)
     bytes = UInt8[]
     for c in full_bpe_str
         push!(bytes, get(tk.byte_decoder, c, UInt8('?')))
     end
-    
+
     return String(bytes)
+end
+
+"""
+    format_chat_prompt(tk::Tokenizer, message::String; system::Union{Nothing,String}=nothing) -> Vector{Int}
+
+Format a user message with the Qwen3 chat template and return token IDs.
+"""
+function format_chat_prompt(tk::Tokenizer, message::String; system::Union{Nothing,String}=nothing)::Vector{Int}
+    im_start = get(tk.added_tokens, "<|im_start|>", 151644)
+    im_end = get(tk.added_tokens, "<|im_end|>", 151645)
+
+    ids = Int[]
+
+    # System message (optional)
+    if system !== nothing
+        push!(ids, im_start)
+        append!(ids, _bpe_encode(tk, "system\n" * system))
+        push!(ids, im_end)
+        append!(ids, _bpe_encode(tk, "\n"))
+    end
+
+    # User message
+    push!(ids, im_start)
+    append!(ids, _bpe_encode(tk, "user\n" * message))
+    push!(ids, im_end)
+    append!(ids, _bpe_encode(tk, "\n"))
+
+    # Assistant prompt
+    push!(ids, im_start)
+    append!(ids, _bpe_encode(tk, "assistant\n"))
+
+    return ids
 end
 
 vocab_size(t::Tokenizer) = length(t.vocab)

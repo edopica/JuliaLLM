@@ -1,3 +1,5 @@
+import JSON3
+import SafeTensors
 using Test, JuliaLLM, CUDA, Adapt
 
 @testset "CUDA Support" begin
@@ -21,7 +23,7 @@ using Test, JuliaLLM, CUDA, Adapt
             "head_dim" => 4
         )
         open(joinpath(dir, "config.json"), "w") do io
-            import JSON3; JSON3.write(io, cfg_data)
+            JSON3.write(io, cfg_data)
         end
 
         weights = Dict(
@@ -40,7 +42,7 @@ using Test, JuliaLLM, CUDA, Adapt
             "model.layers.0.mlp.down_proj.weight" => rand(Float32, 16, 32),
             "lm_head.weight" => rand(Float32, 100, 16),
         )
-        import SafeTensors; SafeTensors.serialize(joinpath(dir, "model.safetensors"), weights)
+        SafeTensors.serialize(joinpath(dir, "model.safetensors"), weights)
 
         model = load_model(dir)
         
